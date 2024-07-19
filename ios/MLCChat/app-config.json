@@ -1,0 +1,27 @@
+{
+  "model_lib_path_for_prepare_libs": {
+    "meta-llama_Llama-2-7b-chat-hf-q3f16_1":      "meta-llama_Llama-2-7b-chat-hf-q3f16_1/meta-llama_Llama-2-7b-chat-hf-q3f16_1-iphone.tar",
+    "google_gemma-2b-it-q3f16_1":                 "google_gemma-2b-it-q3f16_1/google_gemma-2b-it-q3f16_1-iphone.tar",
+    "google_gemma-2b-it-q4f16_1":                 "google_gemma-2b-it-q4f16_1/google_gemma-2b-it-q4f16_1-iphone.tar"
+  },
+  "model_list": [
+    {
+      "model_path": "",
+      "model_id": "meta-llama_Llama-2-7b-chat-hf-q3f16_1",
+      "model_lib": "llama_q3f16_1",
+      "estimated_vram_bytes": 0
+    },
+    {
+      "model_path": "",
+      "model_id": "google_gemma-2b-it-q3f16_1",
+      "model_lib": "gemma_q3f16_1",
+      "estimated_vram_bytes": 0
+    },
+    {
+      "model_path": "",
+      "model_id": "google_gemma-2b-it-q4f16_1",
+      "model_lib": "gemma_q4f16_1",
+      "estimated_vram_bytes": 0
+    }
+  ]
+}

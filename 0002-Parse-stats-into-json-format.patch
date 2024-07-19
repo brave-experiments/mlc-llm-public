@@ -1,0 +1,60 @@
+From 9b3d6f2fc6e84ec29afe501611708da488950081 Mon Sep 17 00:00:00 2001
+From: Stefanos Laskaridis <stefanos@brave.com>
+Date: Mon, 4 Mar 2024 16:56:11 +0000
+Subject: [PATCH] Parse stats into json format
+
+---
+ python/mlc_chat/interface/chat.py | 31 ++++++++++++++++++++++++++++++-
+ 1 file changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/python/mlc_chat/interface/chat.py b/python/mlc_chat/interface/chat.py
+index 3d23df40..0df8bb15 100644
+--- a/python/mlc_chat/interface/chat.py
++++ b/python/mlc_chat/interface/chat.py
+@@ -1,5 +1,7 @@
+ """Python entrypoint of chat."""
+ import dataclasses
++import re
++import json
+ from typing import List, Optional, Union
+ 
+ from prompt_toolkit import prompt as get_prompt  # pylint: disable=import-error
+@@ -152,7 +154,34 @@ def chat(
+                     f.write(f"{event_key} {event_value}\n")
+             break
+         elif prompt[:6] == "/stats":
+-            print(cm.stats(verbose=True), flush=True)
++            # print(cm.stats(verbose=True), flush=True)
++            # ----------- prefill -----------
++            # throughput: 87.899 tok/s
++            # total tokens: 10 tok
++            # total time: 0.114 s
++            # ------------ decode ------------
++            # throughput: 54.603 tok/s
++            # total tokens: 18 tok
++            # total time: 0.330 s
++            # Parse the above metrics into json format
++            stats = cm.stats(verbose=True)
++            if stats.startswith("{"):  # This is already handled by the backend
++                print(stats, flush=True)
++            else:  # This is in case the backend has not been changed
++                stats = stats.strip().split("\n")
++                float_re = re.compile(r"\d+\.\d+")
++                int_re = re.compile(r"\d+")
++                stats_dict = {}
++                try:
++                    for i in range(0, len(stats), 4):
++                        stats_dict[stats[i].strip('-').strip()] = {
++                            "throughput": f"{float(re.findall(float_re, stats[i + 1])[0])} tok/s",
++                            "total_tokens": f"{int(re.findall(int_re, stats[i + 2])[0])} tok",
++                            "total_time": f"{float(re.findall(float_re, stats[i + 3])[0])} s",
++                        }
++                    print(json.dumps(stats_dict, indent=4), flush=True)
++                except IndexError:
++                    print(stats, flush=True)
+         elif prompt[:4] == "/set":
+             gen_config_overrides = GenerationConfigOverride.from_str(prompt.split()[1])
+             generate_config = gen_config_overrides.apply(generate_config)
+-- 
+2.43.0
+

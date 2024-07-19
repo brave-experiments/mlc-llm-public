@@ -1,0 +1,142 @@
+#!/usr/bin/expect
+
+# Note:   This script is used to run the MLC models in interactive mode on jetson devices.
+# Author: Stefanos Laskaridis (stefanos@brave.com)
+
+package require json
+
+# Check if an argument is provided
+if { $argc != 8 } {
+    puts "Usage: $argv0 model_path model_lib_path input_prompts_filename conversation_from conversation_to output_path events_filename iteration"
+    exit 1
+}
+
+# config
+set timeout -1
+set sleep_time 5
+set model_path [lindex $argv 0]
+set model_lib_path [lindex $argv 1]
+set input_prompts_filename [lindex $argv 2]
+set conversation_from [expr {int([lindex $argv 3])}]
+set conversation_to [expr {int([lindex $argv 4])}]
+set output_path [lindex $argv 5]
+set events_filename [lindex $argv 6]
+set iteration [lindex $argv 7]
+
+# create output path
+exec mkdir -p "$output_path/melt_measurements/"
+
+set log_path "$output_path/melt_measurements/llm_output_iter${iteration}_conv${conversation_from}.txt"
+set measurements "$output_path/melt_measurements/measurements_iter${iteration}_conv${conversation_from}.csv"
+
+# log file
+log_file $log_path
+
+# build expect prompt based on given model_path
+if {[string first "Llama-2" $model_path] != -1} {
+    set expect_prompt "\[INST\]:\ "
+} elseif {[string first "mistral" $model_path] != -1} {
+    set expect_prompt "\[INST\]:\ "
+} elseif {[string first "TinyLlama" $model_path] != -1} {
+    set expect_prompt "<|im_start|>user: "
+} elseif {[string first "stablelm" $model_path] != -1} {
+    set expect_prompt "<|user|>"
+} elseif {[string first "google_gemma" $model_path] != -1} {
+    set expect_prompt "<start_of_turn>user: "
+} else {
+    # error
+    puts "Error: Unknown model for given model_path: $model_path"
+    exit 1
+}
+set expect_prompt "\n$expect_prompt"
+
+# define store metrics function
+proc store_metrics {start_time end_time state measurements} {
+    set duration [expr {double($end_time - $start_time) / 1000.0}]
+    set start_time_epoch [expr {$start_time / 1000.0}]
+    set parsed_state [string map {\n \\n} $state]
+    exec echo "$start_time_epoch,$duration,\"$parsed_state\"\r" >> "$measurements"
+}
+
+# Read the JSON file
+set file_data [read [open $input_prompts_filename r]]
+set input_prompts [json::json2dict $file_data]
+
+# set range
+if {$conversation_to > [expr [llength $input_prompts] -1] } {
+    set conversation_to [expr [llength $input_prompts] -1]
+}
+set input_prompts [lrange $input_prompts $conversation_from $conversation_to]
+
+
+# init measurements file (write csv header)
+exec echo "start_date,duration,state\r" > "$measurements"
+
+# init variables, this init states are proxy to model loading
+set start_time [clock milliseconds]
+set state "load_model"
+
+# build command
+set command "spawn mlc_chat chat --model-lib-path $model_lib_path --energy-events $events_filename $model_path"
+
+# Execute the command
+eval $command
+
+sleep $sleep_time
+
+# iterate through conversations
+foreach conversation $input_prompts {
+
+    # iterate through prompts
+    foreach prompt $conversation {
+
+        expect -ex $expect_prompt {
+
+            # save metrics of previous prompt (or model load if first iteration)
+            set end_time [clock milliseconds]
+            store_metrics $start_time $end_time $state $measurements
+
+            sleep $sleep_time
+
+            # save state vars for next iteration and send the prompt
+            set state $prompt
+
+            # Send stats on every prompt
+            send "/stats\r"
+            sleep 1
+
+            set start_time [clock milliseconds]
+
+            # escape any \n characters in the prompt
+            set parsed_prompt [string map {\n \\n} $prompt]
+            send "$parsed_prompt\r"
+        }
+    }
+
+    expect -ex $expect_prompt {
+        # print stats
+        send "/stats\r"
+    }
+    # expect -ex $expect_prompt {
+    #     send "/reload\r"
+    # }
+    # expect -ex $expect_prompt {
+    #     # reload model/context
+    #     send "/reset\r"
+    # }
+}
+
+# finish
+expect -ex $expect_prompt {
+
+    # save last metrics
+    set end_time [clock milliseconds]
+    store_metrics $start_time $end_time $prompt $measurements
+
+    sleep $sleep_time
+
+    # exit
+    send "/exit\r"
+    sleep 10
+    expect eof
+}
